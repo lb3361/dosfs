@@ -91,6 +91,49 @@ void common_options(void)
           "\t-p <partno>   :  specifies a partition number (1..4)\n" );
 }
 
+int prompt(const char *fmt, ...)
+{
+  int res = -1;
+  char buffer[16];
+  char *s;
+
+  for(;;) {
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fprintf(stderr, " (Y/N)? ");
+    fflush(stdin);
+    fflush(stderr);
+    if (! (s = fgets(buffer, sizeof(buffer), stdin)))
+      return 0;
+    while (*s == '\t' || *s == ' ')
+      s++;
+    if (! strncasecmp(s, "yes", 3)) {
+      res = 1; s += 3;
+    } else if (! strncasecmp(s, "no", 2)) {
+      res = 0; s += 2;
+    } else if (! strncasecmp(s, "y", 1)) {
+      res = 1; s += 1;
+    } else if (! strncasecmp(s, "n", 1)) {
+      res = 0; s += 1;
+    } 
+    while (*s == '\t' || *s == ' ')
+      s++;
+    if (*s == '\n')
+      return res;
+    for(; *s; s++)
+      if ((res = *s) == '\n')
+        break;;
+    while (res != '\n' && res != EOF)
+      res = getchar();
+    if (res == EOF)
+      break;
+  }
+  return 0;
+}
+
+
 
 
 /* -------------------------------------------- */
@@ -113,6 +156,7 @@ FATFS vol;
 /* -------------------------------------------- */
 
 const char *fn = "/dev/floppy";
+const char *sfn = "floppy";
 int fd = -1;
 int wp = 0;
 
@@ -145,8 +189,6 @@ DRESULT disk_read (BYTE pdrv, BYTE *buff, LBA_t sector,	UINT count)
   ssize_t rsz;
   if (! fd)
     return RES_NOTRDY;
-  if (wp)
-    return RES_WRPRT;
   if (lseek(fd, (off_t)(sector * 512), SEEK_SET)  == (off_t)(-1))
     return RES_PARERR;
   while (sz > 0) {
@@ -237,25 +279,41 @@ DWORD get_fattime (void)
 /* UTILITIES
 /* -------------------------------------------- */
 
+
+char *strconcat(const char *str1, ...)
+{
+  va_list ap;
+  const char *s;
+  char *res, *d;
+  int l = strlen(str1);
+  va_start(ap, str1);
+  while ((s = va_arg(ap, const char*)))
+    l += strlen(s);
+  va_end(ap);
+  if (! (res = malloc(l + 1)))
+    fatal("out of memory");
+  strcpy(res, str1);
+  d = res + strlen(res);
+  va_start(ap, str1);
+  while ((s = va_arg(ap, const char*))) {
+    strcpy(d, s);
+    d += strlen(d);
+  }
+  va_end(ap);
+  return res;
+}
+
 char *fix_path(const char *path)
 {
-  char *s;
-  char *np = strdup(path);
+  char *s, *np;
+  while (*path == '/' || *path == '\\')
+    path += 1;
+  if (! (np = strdup(path)))
+    fatal("out of memory");
   for (s = np; *s; s++)
     if (*s == '\\')
       *s = '/';
   return np;
-}
-
-const char *pattern_p(const char *path)
-{
-  const char *s;
-  const char *last = strrchr(path, '/');
-  last = (last) ? last+1 : path;
-  for(s = last; *s; s++)
-    if (*s == '*' || *s == '?')
-      return last;
-  return 0;
 }
 
 const int file_p(const char *path)
@@ -282,7 +340,7 @@ const char *format_date(WORD date)
 {
   static char buffer[12];
   sprintf(buffer, "%02d/%02d/%04d",
-          (date >> 5) & 0xf, (date & 0x1f), 1980 + (date >> 9) & 0x3f );
+          (date >> 5) & 0xf, (date & 0x1f), 1980 + ((date >> 9) & 0x3f) );
   return buffer;
 }
 
@@ -302,7 +360,7 @@ const char *format_time(WORD time)
 
 void print_filinfo(FILINFO *inf, int xflag)
 {
-  printf("%s %s %-8s %8lld ",
+  printf("%s %s %8s %8lld ",
          format_date(inf->fdate), format_time(inf->ftime),
          (inf->fattrib & AM_DIR) ? "<DIR>" : "",
          (long long)(inf->fsize) );
@@ -324,7 +382,7 @@ void dosdirhelp(void)
 {
   fprintf(stderr,
           "Usage: dosdir <options> <path[/pattern]>\n"
-          "       dosfs --dir <options>  <path[/pattern]>\n"
+          "       dosfs --dir <options>  <path[/attern]>\n"
           "List the contents of a directory <path> matching the optional pattern <pattern>\n"
           "Options:\n");
   common_options();
@@ -387,7 +445,7 @@ FRESULT dosdir(int argc, const char **argv)
     printf(" Volume Serial Number is %04X-%04X\n\n", (serial >> 16) & 0xffff, serial & 0xffff);
   }
   if (! bflag) {
-    printf(" Directory of %s\n\n", (path && path[0]) ? path : "/");
+    printf(" Directory of [%s]:/%s\n\n", sfn, path);
   }
 
   res = f_findfirst(&dir, &info, path, pattern);
@@ -403,7 +461,7 @@ FRESULT dosdir(int argc, const char **argv)
       }
       if (aflag || !(info.fattrib & (AM_HID|AM_SYS))) {
         if (bflag)
-          printf("%s/%s\n", path, info.fname);
+          printf("%s%s/%s\n", path[0] ? "/" : "", path, info.fname);
         else
           print_filinfo(&info, xflag);
       }
@@ -480,8 +538,228 @@ FRESULT dosread(int argc, const char **argv)
 /* DOSWRITE
 /* -------------------------------------------- */
 
+void doswritehelp(void)
+{
+  fprintf(stderr,
+          "Usage: doswrite <options> <path>}}\n"
+          "       dosfs --write <options> <path>}}\n"
+          "Writes stdin to the specified {<path>}.\n"
+          "Options:\n");
+  common_options();
+  fprintf(stderr,
+          "\t-a            :  appends to the possibly existing file <path>.\n"
+          "\t-q            :  silently overwrites an existing file\n");
+}
+
+FRESULT doswrite(int argc, const char **argv)
+{
+  int i;
+  char *path = 0;
+  BYTE mode = FA_WRITE | FA_CREATE_NEW;
+  FRESULT res;
+  FIL fil;
+  char buffer[4096];
+  UINT nread, nwritten;
+
+  for (i=1; i<argc; i++) {
+    if (! strcmp(argv[i],"-a"))
+      mode = FA_WRITE | FA_OPEN_APPEND;
+    else if (! strcmp(argv[i],"-q"))
+      mode = FA_WRITE | FA_CREATE_ALWAYS;
+    else if (! path)
+      path = fix_path(argv[i]);
+    else
+      goto usage;
+  }
+  if (!path) {
+  usage:
+    doswritehelp();
+    exit(EXIT_FAILURE);
+  }
+#ifdef WIN32
+  fflush(stdin);
+  _setmode(_fileno(stdin), O_BINARY);
+#endif
+  res = f_open(&fil, path, mode);
+  if (res != FR_OK)
+    return res;
+  for(;;) {
+    nread = fread(buffer, 1, sizeof(buffer), stdin);
+    if (nread == 0)
+      break;
+    res = f_write(&fil, buffer, nread, &nwritten);
+    if (res != FR_OK)
+      break;
+    if (nwritten < nread)
+      break;
+  }
+  f_close(&fil);
+  if (ferror(stdin))
+    fatal("I/O error reading data from stdin");
+  if (nread && res != FR_OK)
+    return res;
+  if (nread && nwritten < nread)
+    fatal("Filesystem is full");
+  return FR_OK;
+}
 
 
+
+/* -------------------------------------------- */
+/* DOSMKDIR
+/* -------------------------------------------- */
+
+void dosmkdirhelp(void)
+{
+  fprintf(stderr,
+          "Usage: dosmkdir <options> <path>}}\n"
+          "       dosfs --mkdir <options> <path>}}\n"
+          "Creates a subdirectory named {<path>}.\n"
+          "Options:\n");
+  common_options();
+  fprintf(stderr,
+          "\t-q            :  silently create all subdirs\n");
+}
+
+FRESULT rmkdir(char *path, int qflag)
+{
+  if (qflag) {
+    char *s = strrchr(path,'/');
+    if (dir_p(path))
+      return FR_OK;
+    if (s) {
+      *s = 0;
+      rmkdir(path, qflag);
+      *s = '/';
+    }
+  }
+  return f_mkdir(path);
+}
+
+FRESULT dosmkdir(int argc, const char **argv)
+{
+  FRESULT res;
+  int qflag = 0;
+  char *path = 0;
+  int i;
+  for (i=1; i<argc; i++)
+    if (!strcmp(argv[i], "-q"))
+      qflag = 1;
+    else if (!path)
+      path = fix_path(argv[i]);
+    else
+      goto usage;
+  if (!path) {
+  usage:
+    dosmkdirhelp();
+    exit(EXIT_FAILURE);
+  }
+  return rmkdir(path, qflag);
+}
+
+
+/* -------------------------------------------- */
+/* DOSDEL
+/* -------------------------------------------- */
+
+void dosdelhelp(void)
+{
+  fprintf(stderr,
+          "Usage: dosmkdir <options> {<paths>}}}\n"
+          "       dosfs --mkdir <options> {<paths>}}}\n"
+          "Delete files or subtrees named <paths>.\n"
+          "Options:\n");
+  common_options();
+  fprintf(stderr,
+          "\t-i            :  always prompt before deleting\n"
+          "\t-q            :  silently deletes files without prompting\n");
+}
+
+
+
+extern FRESULT rdelone(char *path, int verbose);
+
+FRESULT rdelmany(char *path, int verbose)
+{
+  DIR dir;
+  FILINFO info;
+  FRESULT res;
+  char *pattern = strrchr(path,'/');
+  
+  if (pattern) {
+    *pattern = 0;
+    pattern += 1;
+  } else {
+    pattern = path;
+    path = "";
+  }
+  if (!verbose && strpbrk(pattern,"*?"))
+    verbose++;
+
+  res = f_findfirst(&dir, &info, path, pattern);
+  if (res != FR_OK && res != FR_NO_FILE)
+    return res;
+  while (res == FR_OK && info.fname[0])
+    {
+      char *npath = strconcat(path,"/",info.fname);
+      res = rdelone(npath, verbose);
+      if (res != FR_OK) {
+        fprintf(stderr, "dosfs: error while processing %s\n", npath);
+        free(npath);
+        return res;
+      }
+      free(npath);
+      res = f_findnext(&dir, &info);
+    }
+  f_closedir(&dir);
+  return res;
+}
+
+FRESULT rdelone(char *path, int verbose)
+{
+  if (dir_p(path)) {
+    char *npath;
+    if (verbose >= 0 && !prompt("[%s]:%s, Delete entire subtree", sfn, path))
+      return FR_OK;
+    npath = strconcat(path, "/", "*");
+    rdelmany(npath, -1);
+    free(npath);
+  } else if (verbose > 0 && ! prompt("[%s]:%s, Delete", sfn, path))
+    return FR_OK;
+  return f_unlink(path);
+}
+
+FRESULT dosdel(int argc, const char **argv)
+{
+  int i;
+  int verbose = 0;
+  FRESULT res = FR_EXIST;
+  
+  for (i=1; i<argc; i++)
+    if (!strcmp(argv[i], "-i"))
+      verbose = +1;
+    else if (!strcmp(argv[i], "-q"))
+      verbose = -1;
+    else if ((res = rdelmany(fix_path(argv[i]), verbose)) != FR_OK) {
+      fprintf(stderr, "dosfs: error while processing '%s'\n", argv[i]);
+      return res;
+    }
+  if (res != FR_OK) {
+    dosdelhelp();
+    exit(EXIT_FAILURE);
+  }
+  return res;
+}
+
+
+/* -------------------------------------------- */
+/* DOSRENAME
+/* -------------------------------------------- */
+
+
+/* -------------------------------------------- */
+/* DOSMKFS
+/* -------------------------------------------- */
 
 
 /* -------------------------------------------- */
@@ -496,6 +774,9 @@ struct {
 } commands[] = {
                 { "dir", dosdir, dosdirhelp },
                 { "read", dosread, dosreadhelp },
+                { "write", doswrite, doswritehelp },
+                { "mkdir", dosmkdir, dosmkdirhelp },
+                { "del", dosdel, dosdelhelp },
                 { 0, 0 } };
 
 
@@ -572,6 +853,8 @@ int main(int argc, const char **argv)
       if (!strcmp(argv[i], "-f") && i + 1 < argc)
         {
           fn = argv[i + 1];
+          sfn = strrchr(fn, '/');
+          sfn = (sfn) ? sfn + 1 : fn;
           i += 1;
           continue;
         }
@@ -606,6 +889,8 @@ int main(int argc, const char **argv)
   }
 
   /* Mount, run, unmount */
+  
+  
   if ((res = f_mount(&vol, "", 1)) != FR_OK)
     fatal_code(res);
   if ((res = commands[cmdno].run(nargc, nargv)) != FR_OK)
