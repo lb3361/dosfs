@@ -974,11 +974,10 @@ void common_usage()
   fprintf(stderr,
           "Usage: dosfs --<subcmd> <options> <..args..>\n"
           "Usage: dos<subcmd> <options> <..args..>\n"
-          "  Valid subcommands are:");
+          "Valid subcommands are:");
   for (i=0; commands[i].cmd; i++)
     fprintf(stderr, " %s", commands[i].cmd);
-  fprintf(stderr, "\n"
-          "  Give a command with option -h see command-specific help\n");
+  fprintf(stderr, "\n");
   fprintf(stderr,
           "Common options\n");
   common_options();
