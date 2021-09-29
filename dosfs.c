@@ -79,6 +79,7 @@ void fatal_code(DRESULT code)
     case FR_WRITE_PROTECTED: fatal("Write protected\n");
     case FR_INVALID_PARAMETER: fatal("Invalid parameter\n");
     case FR_EXIST: fatal("File already exists\n");
+    case FR_MKFS_ABORTED: fatal("Formatting failed\n");
     deault: fatal("Internal error %d\n", (int)code);
     }
   exit(EXIT_FAILURE);
@@ -187,6 +188,7 @@ DRESULT disk_read (BYTE pdrv, BYTE *buff, LBA_t sector,	UINT count)
   (void) pdrv;
   size_t sz = (size_t)count * 512;
   ssize_t rsz;
+
   if (! fd)
     return RES_NOTRDY;
   if (lseek(fd, (off_t)(sector * 512), SEEK_SET)  == (off_t)(-1))
@@ -208,6 +210,7 @@ DRESULT disk_write (BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
   (void) pdrv;
   size_t sz = (size_t)count * 512;
   ssize_t rsz;
+
   if (! fd)
     return RES_NOTRDY;
   if (wp)
@@ -249,7 +252,7 @@ DRESULT disk_ioctl (BYTE pdrv, BYTE cmd, void *buff)
         sz = lseek(fd, 0, SEEK_END);
         if (sz == (off_t)-1)
           return RES_ERROR;
-        *(LBA_t*)buff = (LBA_t)sz;
+        *(LBA_t*)buff = (LBA_t)sz / 512;
         return RES_OK;
       }
     default:
@@ -265,6 +268,7 @@ DWORD get_fattime (void)
   DWORD res = 0;
   time_t tim = time(NULL);
   struct tm *tm = localtime(&tim);
+
   res |= ((tm->tm_year - 80) & 0x7f ) << 25;
   res |= ((tm->tm_mon + 1) & 0xf) << 21;
   res |= ((tm->tm_mday) & 0x1f) << 16;
@@ -286,6 +290,7 @@ char *strconcat(const char *str1, ...)
   const char *s;
   char *res, *d;
   int l = strlen(str1);
+
   va_start(ap, str1);
   while ((s = va_arg(ap, const char*)))
     l += strlen(s);
@@ -306,6 +311,7 @@ char *strconcat(const char *str1, ...)
 char *fix_path(const char *path)
 {
   char *s, *np;
+
   while (*path == '/' || *path == '\\')
     path += 1;
   if (! (np = strdup(path)))
@@ -316,7 +322,15 @@ char *fix_path(const char *path)
   return np;
 }
 
-const int file_p(const char *path)
+
+int pattern_p(const char *path)
+{
+  if (strpbrk(path, "*?"))
+    return 1;
+  return 0;
+}
+
+int file_p(const char *path)
 {
   FILINFO info;
   if (f_stat(path, &info) == FR_OK)
@@ -325,9 +339,10 @@ const int file_p(const char *path)
   return 0;
 }
 
-const int dir_p(const char *path)
+int dir_p(const char *path)
 {
   FILINFO info;
+
   if (path[0] == 0 || path[0] == '/' && path[1] == 0)
     return 1;
   if (f_stat(path, &info) == FR_OK)
@@ -339,6 +354,7 @@ const int dir_p(const char *path)
 const char *format_date(WORD date)
 {
   static char buffer[12];
+
   sprintf(buffer, "%02d/%02d/%04d",
           (date >> 5) & 0xf, (date & 0x1f), 1980 + ((date >> 9) & 0x3f) );
   return buffer;
@@ -349,6 +365,7 @@ const char *format_time(WORD time)
   static char buffer[12];
   int hour = (time >> 11) & 0x1f;
   const char *ampm = (hour >= 12) ? "PM" : "AM";
+
   if (hour >= 12)
     hour -= 12;
   if (hour == 0)
@@ -425,7 +442,6 @@ FRESULT dosdir(int argc, const char **argv)
       exit(EXIT_FAILURE);
     }
   }
-
   pattern = (pattern) ? pattern + 1 : path;
   if (dir_p(path)) {
     pattern = "*";
@@ -436,7 +452,6 @@ FRESULT dosdir(int argc, const char **argv)
     pattern = path;
     path = "";
   }
-
   if (! bflag && f_getlabel("", label, &serial) == FR_OK) {
     if (label[0])
       printf(" Volume label: %s\n", label);
@@ -447,7 +462,6 @@ FRESULT dosdir(int argc, const char **argv)
   if (! bflag) {
     printf(" Directory of [%s]:/%s\n\n", sfn, path);
   }
-
   res = f_findfirst(&dir, &info, path, pattern);
   if (res != FR_OK && res != FR_NO_FILE)
     return res;
@@ -490,7 +504,7 @@ void dosreadhelp(void)
   fprintf(stderr,
           "Usage: dosread {<paths>}}\n"
           "       dosfs --read {<paths>}\n"
-          "Read the specified {<paths>} and dump them to stdout\n"
+          "Copy the specified {<paths>} to stdout\n"
           "Options:\n");
   common_options();
 }
@@ -642,6 +656,7 @@ FRESULT dosmkdir(int argc, const char **argv)
   int qflag = 0;
   char *path = 0;
   int i;
+
   for (i=1; i<argc; i++)
     if (!strcmp(argv[i], "-q"))
       qflag = 1;
@@ -665,8 +680,8 @@ FRESULT dosmkdir(int argc, const char **argv)
 void dosdelhelp(void)
 {
   fprintf(stderr,
-          "Usage: dosmkdir <options> {<paths>}}}\n"
-          "       dosfs --mkdir <options> {<paths>}}}\n"
+          "Usage: dosdel <options> {<paths>}}}\n"
+          "       dosfs --del <options> {<paths>}}}\n"
           "Delete files or subtrees named <paths>.\n"
           "Options:\n");
   common_options();
@@ -675,17 +690,20 @@ void dosdelhelp(void)
           "\t-q            :  silently deletes files without prompting\n");
 }
 
-
-
-extern FRESULT rdelone(char *path, int verbose);
+FRESULT rdelone(char *path, int verbose);
 
 FRESULT rdelmany(char *path, int verbose)
 {
   DIR dir;
   FILINFO info;
   FRESULT res;
-  char *pattern = strrchr(path,'/');
-  
+  char *pattern;
+
+  if (! pattern_p(path))
+    return rdelone(path, verbose);
+  else if (! verbose)
+    verbose += 1;
+  pattern = strrchr(path,'/');    
   if (pattern) {
     *pattern = 0;
     pattern += 1;
@@ -693,9 +711,6 @@ FRESULT rdelmany(char *path, int verbose)
     pattern = path;
     path = "";
   }
-  if (!verbose && strpbrk(pattern,"*?"))
-    verbose++;
-
   res = f_findfirst(&dir, &info, path, pattern);
   if (res != FR_OK && res != FR_NO_FILE)
     return res;
@@ -753,13 +768,153 @@ FRESULT dosdel(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* DOSRENAME
+/* DOSMOVE
 /* -------------------------------------------- */
+
+void dosmovehelp(void)
+{
+  fprintf(stderr,
+          "Usage: dosmove <options> {<srcpaths>} <destpath|destdir>}}\n"
+          "       dosfs --move  <options> {<srcpaths>} <destpath|destdir>}}\n"
+          "Move or rename files or subtrees.\n"
+          "Options:\n");
+  common_options();
+  fprintf(stderr,
+          "\t-q            :  silently overwrites files without prompting\n");
+}
+
+FRESULT dosmove(int argc, const char **argv)
+{
+  int i;
+  int qflag = 0;
+  int nargc = 0;
+  int dirp = 0;
+  char *dest = 0;
+  FRESULT res;
+  FILINFO info;
+  DIR dir;
+
+  for (i = nargc = 1; i < argc; i++)
+    if (! strcmp(argv[i], "-q"))
+      qflag = 1;
+    else 
+      argv[nargc++] = argv[i];
+  if (nargc < 3) {
+  usage:
+    dosmovehelp();
+    exit(EXIT_FAILURE);
+  }
+  dest = fix_path(argv[argc-1]);
+  if (! (dirp = dir_p(dest)))
+    if (nargc > 3 || pattern_p(argv[1]))
+      fatal("Moving multiple files: Destination must be an existing directory\n");
+  for (i = 1; i < nargc - 1; i++) {
+    char *src = fix_path(argv[i]);
+    char *pattern = strrchr(src, '/');
+    if (pattern) {
+      *pattern = 0;
+      pattern ++;
+    } else {
+      pattern = src;
+      src = "";
+    }
+    res = f_findfirst(&dir, &info, src, pattern); 
+    if (res != FR_OK && res != FR_NO_FILE)
+      return res;
+    while (res == FR_OK && info.fname[0])
+      {
+        char *from = strconcat(src, "/", info.fname);
+        char *to = (dirp) ? strconcat(dest, "/", info.fname) : strdup(dest);
+        if (file_p(to) && qflag)
+          f_unlink(to);
+        res = f_rename(from, to);
+        free(from);
+        free(to);
+        if (res != FR_OK)
+          break;
+        res = f_findnext(&dir, &info);
+      }
+    f_closedir(&dir);
+    if (res != FR_OK)
+      return res;
+  }
+  return FR_OK;
+}
 
 
 /* -------------------------------------------- */
-/* DOSMKFS
+/* DOSFORMAT
 /* -------------------------------------------- */
+
+void dosformathelp(void)
+{
+  fprintf(stderr,
+          "Usage: dosformat <options> [<label>]\n"
+          "       dosfs --format <options> [<label>]\n"
+          "Format a filesystem.\n"
+          "With option -p, this command expects a partionned drive and\n"
+          "formats the specified partition. Otherwise it formats the entire\n"
+          "disk or disk image with a filesystem with or without a partition table.\n"
+          "Options:\n");
+  common_options();
+  fprintf(stderr,
+          "\t-s            :  creates a filesystem without a partition table.\n"
+          "\t-F <fs>       :  specifies a filesystem: FAT, FAT32, or EXFAT.\n");
+}
+
+FRESULT dosformat(int argc, const char **argv)
+{
+  FRESULT res;
+  char buffer[64*1024];
+  const char *label = 0;
+  MKFS_PARM parm;
+  int fflag = 0;
+  int sflag = 0;
+  int i;
+  
+  memset(&parm, 0, sizeof(parm));
+  parm.fmt = FM_ANY;
+  for (i=1; i<argc; i++)
+    {
+      if (!strcmp(argv[i], "-s")) {
+        sflag = 1;
+        if (VolToPart[0].pt)
+          fatal("Options -s and -p are incompatible.\n");
+      } else if (!strcmp(argv[i], "-F")) {
+        if (++i >= argc)
+          fatal("Option -F requires an argument.\n");
+        if (!strcasecmp(argv[i],"fat"))
+          fflag |= FM_FAT;
+        else if (!strcasecmp(argv[i],"fat32"))
+          fflag |= FM_FAT32;
+        else if (!strcasecmp(argv[i],"exfat"))
+          fflag |= FM_EXFAT;
+        else
+          fatal("Valid arguments for option -f are: fat fat32 exfat\n");
+      } else if (! label) {
+        label = argv[i];
+      } else {
+      usage:
+        dosformathelp();
+        exit(EXIT_FAILURE);
+      }
+    }
+  parm.fmt = (fflag) ? fflag : FM_ANY;
+  if (sflag)
+    parm.fmt |= FM_SFD;
+
+  if (VolToPart[0].pt) {
+    if (! prompt("Erase partition %d in [%s]", VolToPart[0].pt, sfn))
+      return FR_OK;
+  } else {
+    if (! prompt("Erase everything in [%s]", sfn))
+      return FR_OK;
+  }
+  res = f_mkfs("", &parm, buffer, sizeof(buffer));
+  if (res == FR_OK && label)
+    res = f_setlabel(label);
+  return res;
+}
 
 
 /* -------------------------------------------- */
@@ -777,12 +932,15 @@ struct {
                 { "write", doswrite, doswritehelp },
                 { "mkdir", dosmkdir, dosmkdirhelp },
                 { "del", dosdel, dosdelhelp },
+                { "move", dosmove, dosmovehelp },
+                { "format", dosformat, dosformathelp },
                 { 0, 0 } };
 
 
 int search_cmd(const char *cmd)
 {
   int i;
+
   for (i=0; commands[i].cmd; i++)
     if (! strcmp(cmd, commands[i].cmd))
       return i;
@@ -792,6 +950,7 @@ int search_cmd(const char *cmd)
 void common_usage()
 {
   int i;
+
   fprintf(stderr,
           "Usage: dosfs --<subcmd> <options> <..args..>\n"
           "Usage: dos<subcmd> <options> <..args..>\n"
@@ -815,7 +974,6 @@ int main(int argc, const char **argv)
   int help = 0;
   FRESULT res;
   
-  
   /* try to make utf8 locale */
 #ifdef WIN32
   if (setlocale(LC_CTYPE, ".UTF8"))
@@ -826,13 +984,11 @@ int main(int argc, const char **argv)
   if (mblen("\xc2\xa9", 2) != 2 ||
       mblen("\xe2\x89\xa0", 3) != 3)
     warning("The current locale does not seem to be using UTF-8 encoding.\n");
-
   /* identify progname */
   if (progname = strrchr(argv[0], '/'))
     progname += 1;
   else
     progname = argv[0];
-
   /* default command from progname */
   if (! strncmp(progname, "dos", 3))
     cmdno = search_cmd(progname + 3);
@@ -877,7 +1033,6 @@ int main(int argc, const char **argv)
 #endif
       nargv[nargc++] = argv[i];
     }
-
   /* Check */
   if (cmdno < 0) {
     common_usage();
@@ -887,15 +1042,14 @@ int main(int argc, const char **argv)
     commands[cmdno].help();
     return EXIT_FAILURE;
   }
-
   /* Mount, run, unmount */
-  
-  
-  if ((res = f_mount(&vol, "", 1)) != FR_OK)
-    fatal_code(res);
+  if (commands[cmdno].run != dosformat)
+    if ((res = f_mount(&vol, "", 1)) != FR_OK)
+      fatal_code(res);
   if ((res = commands[cmdno].run(nargc, nargv)) != FR_OK)
     fatal_code(res);
-  if ((res = f_mount(NULL, "", 0)) != FR_OK && j >= 0)
-    fatal_code(res);
+  if (commands[cmdno].run != dosformat)
+    if ((res = f_mount(NULL, "", 0)) != FR_OK && j >= 0)
+      fatal_code(res);
   return EXIT_SUCCESS;
 }
