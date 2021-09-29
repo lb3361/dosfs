@@ -1,4 +1,3 @@
-
 /*----------------------------------------------------------------------------/
 /  DosFs - Command line tools to manage FAT disk images                       /
 /-----------------------------------------------------------------------------/
@@ -88,9 +87,9 @@ void fatal_code(FRESULT code)
 void common_options(void)
 {
   fprintf(stderr,
-          "\t-h            :  shows more help\n"
-          "\t-f <filename> :  specifies a device or image file (required).\n"
-          "\t-p <partno>   :  specifies a partition number (1..4)\n" );
+          "\t-h            :  show more help\n"
+          "\t-f <filename> :  specify a device or image file (required).\n"
+          "\t-p <partno>   :  specify a partition number (1..4)\n" );
 }
 
 int prompt(const char *fmt, ...)
@@ -412,7 +411,7 @@ void dosdirhelp(void)
   fprintf(stderr,
           "\t-b            :  only display the full path of each file, one per line\n"
           "\t-s            :  recursively display files in subdirectories\n"
-          "\t-x            :  dispaly short file names when they're different\n" );
+          "\t-x            :  display short file names when they're different\n" );
 }
 
 FRESULT rdir(char *path, char *pattern, int sflag, int bflag, int xflag,
@@ -597,8 +596,8 @@ void doswritehelp(void)
           "Options:\n");
   common_options();
   fprintf(stderr,
-          "\t-a            :  appends to the possibly existing file <path>.\n"
-          "\t-q            :  silently overwrites an existing file\n");
+          "\t-a            :  append to the possibly existing file <path>.\n"
+          "\t-q            :  overwrite existing files\n");
 }
 
 FRESULT doswrite(int argc, const char **argv)
@@ -673,7 +672,7 @@ void dosmkdirhelp(void)
           "Options:\n");
   common_options();
   fprintf(stderr,
-          "\t-q            :  silently create all subdirs\n");
+          "\t-q            :  create all necessary subdirs\n");
 }
 
 FRESULT rmkdir(char *path, int qflag)
@@ -732,7 +731,7 @@ void dosdelhelp(void)
   common_options();
   fprintf(stderr,
           "\t-i            :  always prompt before deleting\n"
-          "\t-q            :  silently deletes files and trees without prompting\n");
+          "\t-q            :  delete files and trees without prompting\n");
 }
 
 FRESULT rdelone(char *path, int verbose);
@@ -832,7 +831,7 @@ void dosmovehelp(void)
           "Options:\n");
   common_options();
   fprintf(stderr,
-          "\t-q            :  silently overwrites files without prompting\n");
+          "\t-q            :  overwrite files without prompting\n");
 }
 
 FRESULT dosmove(int argc, const char **argv)
@@ -879,8 +878,11 @@ FRESULT dosmove(int argc, const char **argv)
       {
         char *from = strconcat(src, "/", info.fname, 0);
         char *to = (dirp) ? strconcat(dest, "/", info.fname, 0) : strdup(dest);
-        if (file_p(to) && qflag)
-          f_unlink(to);
+        while (to[0] == '/')
+          to += 1;
+        if (file_p(to))
+          if (qflag || prompt("[%s]:/%s, Replace", sfn, to))
+            f_unlink(to);
         res = f_rename(from, to);
         free(from);
         free(to);
@@ -912,8 +914,8 @@ void dosformathelp(void)
           "Options:\n");
   common_options();
   fprintf(stderr,
-          "\t-s            :  creates a filesystem without a partition table.\n"
-          "\t-F <fs>       :  specifies a filesystem: FAT, FAT32, or EXFAT.\n");
+          "\t-s            :  create a filesystem without a partition table.\n"
+          "\t-F <fs>       :  specify a filesystem: FAT, FAT32, or EXFAT.\n");
 }
 
 FRESULT dosformat(int argc, const char **argv)
@@ -1020,7 +1022,7 @@ void common_usage()
     fprintf(stderr, " %s", commands[i].cmd);
   fprintf(stderr, "\n");
   fprintf(stderr,
-          "Common options\n");
+          "Common options:\n");
   common_options();
 }
 

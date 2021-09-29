@@ -18,10 +18,10 @@ The following lists the help associated with each subcommand:
 Usage: dosfs --<subcmd> <options> <..args..>
 Usage: dos<subcmd> <options> <..args..>
 Valid subcommands are: dir read write mkdir del move format
-Common options
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
+Common options:
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
 ```
 
 ```
@@ -32,12 +32,12 @@ pattern <pattern>. Option -b selects a compact output suitable
 for shell scripts. Otherwise this command outputs information
 with a format simular to the well known `dir` dos command.
 Options:
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
 	-b            :  only display the full path of each file, one per line
-        -s            :  recursively display files in subdirectories
-	-x            :  dispaly short file names when they're different
+	-s            :  recursively display files in subdirectories
+	-x            :  display short file names when they're different
 ```
 
 ```
@@ -45,9 +45,9 @@ Usage: dosread {<path>}}
        dosfs --read {<path>}
 Read the files specified by <path> and copy them to stdout.
 Options:
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
 ```
 
 ```
@@ -55,11 +55,11 @@ Usage: doswrite <options> <path>
        dosfs --write <options> <path>
 Write stdin to the specified <path>.
 Options:
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
-	-a            :  appends to the possibly existing file <path>.
-	-q            :  silently overwrites an existing file
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
+	-a            :  append to the possibly existing file <path>.
+	-q            :  overwrite existing files
 ```
 
 ```
@@ -70,11 +70,12 @@ This command fails if {path} already exists or if its parent
 directory does not exists. In contrast, with option -q, this
 command creates all the necessary subdirectories.
 Options:
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
-	-q            :  silently create all subdirs
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
+	-q            :  create all necessary subdirs
 ```
+
 ```
 Usage: dosdel <options> {<path>[/<pattern>]}
        dosfs --del <options> {<path>[/<pattern>]}
@@ -82,11 +83,11 @@ Delete files or subtrees named <path> or matching <path>/<pattern>.
 By default this command prompts before deleting subdirectories or files
 matching a pattern. Use options -i or -q to prompt more or not at all.
 Options:
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
 	-i            :  always prompt before deleting
-	-q            :  silently deletes files and trees without prompting
+	-q            :  delete files and trees without prompting
 ```
 
 ```
@@ -98,10 +99,10 @@ destination <dest> can be an existing directory or give a new filename
 inside an existing directory. When multiple source paths are given
 the destination <dest> must be an existing directory.
 Options:
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
-	-q            :  silently overwrites files without prompting
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
+	-q            :  overwrite files without prompting
 ```
 
 ```
@@ -112,9 +113,9 @@ With option -p, this command expects a partionned drive and
 formats the specified partition. Otherwise it formats the entire
 disk or disk image with a filesystem with or without a partition table.
 Options:
-	-h            :  shows more help
-	-f <filename> :  specifies a device or image file (required).
-	-p <partno>   :  specifies a partition number (1..4)
-	-s            :  creates a filesystem without a partition table.
-	-F <fs>       :  specifies a filesystem: FAT, FAT32, or EXFAT.
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
+	-s            :  create a filesystem without a partition table.
+	-F <fs>       :  specify a filesystem: FAT, FAT32, or EXFAT.
 ```
