@@ -1,7 +1,7 @@
 # dosfs
 Simple command line tool to manage a fat disk image (based on fatfs)
 
-This project was written very quickly because I wanted sometimes
+This project was written very quickly because I wanted something
 more convenient than mouting a disk image as root and less
 complicated than the venerable mtools. I simply reproduced
 the functionality of a program I wrote decades ago to
