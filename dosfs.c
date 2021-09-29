@@ -911,7 +911,11 @@ FRESULT dosformat(int argc, const char **argv)
       return FR_OK;
   }
   res = f_mkfs("", &parm, buffer, sizeof(buffer));
-  if (res == FR_OK && label)
+  if (res != FR_OK)
+    fatal_code(res);
+  if ((res = f_mount(&vol, "", 1)) != FR_OK)
+    fatal_code(res);
+  if (label)
     res = f_setlabel(label);
   return res;
 }
@@ -1048,8 +1052,7 @@ int main(int argc, const char **argv)
       fatal_code(res);
   if ((res = commands[cmdno].run(nargc, nargv)) != FR_OK)
     fatal_code(res);
-  if (commands[cmdno].run != dosformat)
-    if ((res = f_mount(NULL, "", 0)) != FR_OK && j >= 0)
-      fatal_code(res);
+  if ((res = f_mount(NULL, "", 0)) != FR_OK && j >= 0)
+    fatal_code(res);
   return EXIT_SUCCESS;
 }

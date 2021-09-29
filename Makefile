@@ -19,7 +19,7 @@ ${OBJS}: ff.h ffconf.h
 
 install: FORCE
 	-mkdir -p "${DESTDIR}${bindir}"
-	-cp dosfs "${DESTDIR}${bindir}"
+	cp dosfs "${DESTDIR}${bindir}"
 	for n in dosdir dosread doswrite dosmkdir dosdel dosmove dosformat; do \
 	  ( cd "${DESTDIR}${bindir}"; ln -s dosfs $$n ) ; done
 
