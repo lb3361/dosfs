@@ -1,5 +1,5 @@
 SHELL=/bin/sh
-CFLAGS=-g
+CFLAGS=-O
 DESTDIR=
 PREFIX=/usr/local
 bindir=${PREFIX}/bin
