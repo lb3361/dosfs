@@ -1,15 +1,7 @@
 # dosfs
 Simple command line tool to manage a fat disk image (based on fatfs)
 
-This project was written very quickly because I wanted something
-more convenient than mouting a disk image as root and less
-complicated than the venerable mtools. I simply reproduced
-the functionality of a program I wrote decades ago to
-manipulate floppy disk on a SparcStation.
-The compact executable `dosfs` implements several subcommands
-that can be either selected with argument, e.g. `--dir` or `--read`, 
-or preselected by invoking it through a symbolic link whose name
-contains the command name, e.g. `dosdir`, `dosread`, etc.
+This project was written very quickly because I wanted something more convenient than mouting a disk image as root and less complicated than the venerable mtools. The compact executable `dosfs` implements several subcommands that can be either selected with argument, e.g. `--dir` or `--read`, or preselected by invoking it through a symbolic link whose name contains the command name, e.g. `dosdir`, `dosread`, etc.
 
 Three options are recognized by all subcommands:
 * `-f <imagefile>` specify the device or the image file
