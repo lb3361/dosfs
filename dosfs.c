@@ -43,7 +43,7 @@
 
 
 /* -------------------------------------------- */
-/* MESSAGES
+/*   MESSAGES                                   */
 /* -------------------------------------------- */
 
 void fatal(const char *fmt, ...)
@@ -65,7 +65,7 @@ void warning(const char *fmt, ...)
   va_end(ap);
 }
 
-void fatal_code(DRESULT code)
+void fatal_code(FRESULT code)
 {
   switch(code)
     {
@@ -80,7 +80,7 @@ void fatal_code(DRESULT code)
     case FR_INVALID_PARAMETER: fatal("Invalid parameter\n");
     case FR_EXIST: fatal("File already exists\n");
     case FR_MKFS_ABORTED: fatal("Formatting failed\n");
-    deault: fatal("Internal error %d\n", (int)code);
+    default: fatal("Internal error %d\n", (int)code);
     }
   exit(EXIT_FAILURE);
 }
@@ -88,7 +88,8 @@ void fatal_code(DRESULT code)
 void common_options(void)
 {
   fprintf(stderr,
-          "\t-f <filename> :  specifies a device or image file\n"
+          "\t-h            :  shows more help\n"
+          "\t-f <filename> :  specifies a device or image file (required).\n"
           "\t-p <partno>   :  specifies a partition number (1..4)\n" );
 }
 
@@ -138,7 +139,7 @@ int prompt(const char *fmt, ...)
 
 
 /* -------------------------------------------- */
-/* FATFS SUPPORT
+/* FATFS SUPPORT                                */
 /* -------------------------------------------- */
 
 #if FF_MULTI_PARTITION
@@ -153,11 +154,11 @@ void ff_memfree (void* mblock) { free(mblock); }
 FATFS vol;
 
 /* -------------------------------------------- */
-/* FATFS DISKIO
+/* FATFS DISKIO                                 */
 /* -------------------------------------------- */
 
-const char *fn = "/dev/floppy";
-const char *sfn = "floppy";
+const char *fn = 0;
+const char *sfn = 0;
 int fd = -1;
 int wp = 0;
 
@@ -280,7 +281,7 @@ DWORD get_fattime (void)
  
 
 /* -------------------------------------------- */
-/* UTILITIES
+/* UTILITIES                                    */
 /* -------------------------------------------- */
 
 
@@ -383,7 +384,9 @@ void print_filinfo(FILINFO *inf, int xflag)
          (long long)(inf->fsize) );
 #if FF_USE_LFN
   if (xflag)
-    printf("%-12s ", (inf->altname && strcasecmp(inf->fname, inf->altname)) ? inf->altname : "");
+    printf("%-12s ",
+           (inf->altname[0] && strcasecmp(inf->fname, inf->altname))
+           ? inf->altname : "");
   printf("%s\n", inf->fname);
 #else
   printf("%s\n", inf->fname);
@@ -392,7 +395,7 @@ void print_filinfo(FILINFO *inf, int xflag)
 
 
 /* -------------------------------------------- */
-/* DOSDIR
+/* DOSDIR                                       */
 /* -------------------------------------------- */
 
 void dosdirhelp(void)
@@ -400,7 +403,10 @@ void dosdirhelp(void)
   fprintf(stderr,
           "Usage: dosdir <options> <path[/pattern]>\n"
           "       dosfs --dir <options>  <path[/attern]>\n"
-          "List the contents of a directory <path> matching the optional pattern <pattern>\n"
+          "List the contents of a directory <path> matching the optional\n"
+          "pattern <pattern>. Option -b selects a compact output suitable\n"
+          "for shell scripts. Otherwise this command outputs information\n"
+          "with a format simular to the well known `dir` dos command.\n"
           "Options:\n");
   common_options();
   fprintf(stderr,
@@ -496,15 +502,15 @@ FRESULT dosdir(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* DOSREAD
+/* DOSREAD                                      */
 /* -------------------------------------------- */
 
 void dosreadhelp(void)
 {
   fprintf(stderr,
-          "Usage: dosread {<paths>}}\n"
-          "       dosfs --read {<paths>}\n"
-          "Copy the specified {<paths>} to stdout\n"
+          "Usage: dosread {<path>}}\n"
+          "       dosfs --read {<path>}\n"
+          "Read the files specified by <path> and copy them to stdout.\n"
           "Options:\n");
   common_options();
 }
@@ -549,15 +555,15 @@ FRESULT dosread(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* DOSWRITE
+/* DOSWRITE                                     */
 /* -------------------------------------------- */
 
 void doswritehelp(void)
 {
   fprintf(stderr,
-          "Usage: doswrite <options> <path>}}\n"
-          "       dosfs --write <options> <path>}}\n"
-          "Writes stdin to the specified {<path>}.\n"
+          "Usage: doswrite <options> <path>\n"
+          "       dosfs --write <options> <path>\n"
+          "Write stdin to the specified <path>.\n"
           "Options:\n");
   common_options();
   fprintf(stderr,
@@ -620,7 +626,7 @@ FRESULT doswrite(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* DOSMKDIR
+/* DOSMKDIR                                     */
 /* -------------------------------------------- */
 
 void dosmkdirhelp(void)
@@ -628,7 +634,10 @@ void dosmkdirhelp(void)
   fprintf(stderr,
           "Usage: dosmkdir <options> <path>}}\n"
           "       dosfs --mkdir <options> <path>}}\n"
-          "Creates a subdirectory named {<path>}.\n"
+          "Create a subdirectory named <path>.\n"
+          "This command fails if {path} already exists or if its parent\n"
+          "directory does not exists. In contrast, with option -q, this\n"
+          "command creates all the necessary subdirectories.\n"
           "Options:\n");
   common_options();
   fprintf(stderr,
@@ -674,20 +683,22 @@ FRESULT dosmkdir(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* DOSDEL
+/* DOSDEL                                       */
 /* -------------------------------------------- */
 
 void dosdelhelp(void)
 {
   fprintf(stderr,
-          "Usage: dosdel <options> {<paths>}}}\n"
-          "       dosfs --del <options> {<paths>}}}\n"
-          "Delete files or subtrees named <paths>.\n"
+          "Usage: dosdel <options> {<path>[/<pattern>]}\n"
+          "       dosfs --del <options> {<path>[/<pattern>]}\n"
+          "Delete files or subtrees named <path> or matching <path>/<pattern>.\n"
+          "By default this command prompts before deleting subdirectories or files\n"
+          "matching a pattern. Use options -i or -q to prompt more or not at all.\n"
           "Options:\n");
   common_options();
   fprintf(stderr,
           "\t-i            :  always prompt before deleting\n"
-          "\t-q            :  silently deletes files without prompting\n");
+          "\t-q            :  silently deletes files and trees without prompting\n");
 }
 
 FRESULT rdelone(char *path, int verbose);
@@ -768,15 +779,19 @@ FRESULT dosdel(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* DOSMOVE
+/* DOSMOVE                                      */
 /* -------------------------------------------- */
 
 void dosmovehelp(void)
 {
   fprintf(stderr,
-          "Usage: dosmove <options> {<srcpaths>} <destpath|destdir>}}\n"
-          "       dosfs --move  <options> {<srcpaths>} <destpath|destdir>}}\n"
+          "Usage: dosmove <options> {<src>} <dest>}}\n"
+          "       dosfs --move  <options> {<src>} <dest>}}\n"
           "Move or rename files or subtrees.\n"
+          "When this command is called with a single source path <src>, the\n"
+          "destination <dest> can be an existing directory or give a new filename\n"
+          "inside an existing directory. When multiple source paths are given\n"
+          "the destination <dest> must be an existing directory.\n"
           "Options:\n");
   common_options();
   fprintf(stderr,
@@ -843,7 +858,7 @@ FRESULT dosmove(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* DOSFORMAT
+/* DOSFORMAT                                    */
 /* -------------------------------------------- */
 
 void dosformathelp(void)
@@ -923,7 +938,7 @@ FRESULT dosformat(int argc, const char **argv)
 
 
 /* -------------------------------------------- */
-/* MAIN
+/* MAIN                                         */
 /* -------------------------------------------- */
 
 
@@ -990,7 +1005,7 @@ int main(int argc, const char **argv)
       mblen("\xe2\x89\xa0", 3) != 3)
     warning("The current locale does not seem to be using UTF-8 encoding.\n");
   /* identify progname */
-  if (progname = strrchr(argv[0], '/'))
+  if ((progname = strrchr(argv[0], '/')))
     progname += 1;
   else
     progname = argv[0];
@@ -1041,9 +1056,14 @@ int main(int argc, const char **argv)
   /* Check */
   if (cmdno < 0) {
     common_usage();
+    if (help)
+      for (i=0; commands[i].cmd; i++) {
+        fprintf(stderr,"----------------------------------------\n");
+        commands[i].help();
+      }
     return EXIT_FAILURE;
   }
-  if (help) {
+  if (help || fn == 0) {
     commands[cmdno].help();
     return EXIT_FAILURE;
   }
