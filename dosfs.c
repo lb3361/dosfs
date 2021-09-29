@@ -874,6 +874,7 @@ FRESULT dosformat(int argc, const char **argv)
   
   memset(&parm, 0, sizeof(parm));
   parm.fmt = FM_ANY;
+  parm.n_fat = 2;
   for (i=1; i<argc; i++)
     {
       if (!strcmp(argv[i], "-s")) {
