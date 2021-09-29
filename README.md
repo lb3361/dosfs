@@ -35,8 +35,8 @@ Options:
 	-h            :  shows more help
 	-f <filename> :  specifies a device or image file (required).
 	-p <partno>   :  specifies a partition number (1..4)
-	-a            :  display all files including system and hidden ones
 	-b            :  only display the full path of each file, one per line
+        -s            :  recursively display files in subdirectories
 	-x            :  dispaly short file names when they're different
 ```
 

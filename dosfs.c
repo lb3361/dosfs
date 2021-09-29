@@ -410,23 +410,72 @@ void dosdirhelp(void)
           "Options:\n");
   common_options();
   fprintf(stderr,
-          "\t-a            :  display all files including system and hidden ones\n"
           "\t-b            :  only display the full path of each file, one per line\n"
+          "\t-s            :  recursively display files in subdirectories\n"
           "\t-x            :  dispaly short file names when they're different\n" );
+}
+
+FRESULT rdir(char *path, char *pattern, int sflag, int bflag, int xflag,
+             int *pnfiles, FSIZE_t *psfiles, int *pndirs)
+{
+  int ndirs;
+  DIR dir;
+  FILINFO info;
+  FRESULT res;
+
+  while (path[0] == '/')
+    path += 1;
+  if (! bflag)
+    printf("\n Directory of [%s]:/%s\n\n", sfn, path);
+  res = f_findfirst(&dir, &info, path, pattern);
+  if (res != FR_OK && res != FR_NO_FILE)
+    return res;
+  while (res == FR_OK && info.fname[0])
+    {
+      if (info.fattrib & AM_DIR) {
+        *pndirs += 1;
+      } else {
+        *pnfiles += 1;
+        *psfiles += info.fsize;
+      }
+      if (bflag)
+        printf("%s%s/%s%s\n",
+               path[0] ? "/" : "",
+               path,
+               info.fname,
+               info.fattrib & AM_DIR ?  "/" : "" );
+      else
+        print_filinfo(&info, xflag);
+      res = f_findnext(&dir, &info);
+    }
+  f_closedir(&dir);
+  if (sflag) {
+    res = f_findfirst(&dir, &info, path, pattern);
+    if (res != FR_OK && res != FR_NO_FILE)
+      return res;
+    while (res == FR_OK && info.fname[0]) {
+      if (info.fattrib & AM_DIR) {
+        char *npath = strconcat(path, "/", info.fname, 0);
+        rdir(npath, "*", sflag, bflag, xflag, pnfiles, psfiles, pndirs);
+        free(npath);
+      }
+      res = f_findnext(&dir, &info);
+    }
+  }
+  f_closedir(&dir);
+  return res;
 }
 
 FRESULT dosdir(int argc, const char **argv)
 {
   int i;
-  int aflag = 0;
   int bflag = 0;
+  int sflag = 0;
   int xflag = 0;
   char *path  = "";
   char *pattern = 0;
   char label[40];
   DWORD serial;
-  DIR dir;
-  FILINFO info;
   FRESULT res;
   int ndirs = 0;
   int nfiles = 0;
@@ -435,15 +484,18 @@ FRESULT dosdir(int argc, const char **argv)
   FATFS *vol;
 
   for (i=1; i<argc; i++) {
-    if (! strcmp(argv[i], "-a"))
-      aflag = 1;
-    else if (! strcmp(argv[i], "-b"))
+    if (! strcmp(argv[i], "-b"))
       bflag = 1;
+    else if (! strcmp(argv[i], "-s"))
+      sflag = 1;
     else if (! strcmp(argv[i], "-x"))
       xflag = 1;
+    else if (argv[i][0] == '-')
+      goto usage;
     else if (!path || !path[0])
       path = fix_path(argv[i]);
     else {
+    usage:
       dosdirhelp();
       exit(EXIT_FAILURE);
     }
@@ -463,31 +515,9 @@ FRESULT dosdir(int argc, const char **argv)
       printf(" Volume label: %s\n", label);
     else
       printf(" Volume has no label\n");
-    printf(" Volume Serial Number is %04X-%04X\n\n", (serial >> 16) & 0xffff, serial & 0xffff);
+    printf(" Volume Serial Number is %04X-%04X\n", (serial >> 16) & 0xffff, serial & 0xffff);
   }
-  if (! bflag) {
-    printf(" Directory of [%s]:/%s\n\n", sfn, path);
-  }
-  res = f_findfirst(&dir, &info, path, pattern);
-  if (res != FR_OK && res != FR_NO_FILE)
-    return res;
-  while (res == FR_OK && info.fname[0])
-    {
-      if (info.fattrib & AM_DIR) {
-        ndirs ++;
-      } else {
-        nfiles ++;
-        sfiles += info.fsize;
-      }
-      if (aflag || !(info.fattrib & (AM_HID|AM_SYS))) {
-        if (bflag)
-          printf("%s%s/%s\n", path[0] ? "/" : "", path, info.fname);
-        else
-          print_filinfo(&info, xflag);
-      }
-      res = f_findnext(&dir, &info);
-    }
-  f_closedir(&dir);
+  res = rdir(path, pattern, sflag, bflag, xflag, &nfiles, &sfiles, &ndirs);
   if (res == FR_OK && ! bflag) {
     if (nfiles + ndirs == 0)
       printf("File not found\n");
@@ -496,7 +526,6 @@ FRESULT dosdir(int argc, const char **argv)
     printf("    %8d File(s) %12lld bytes\n", nfiles, (long long)sfiles);
     printf("    %8d Dir(s)  %12lld bytes free\n", ndirs, (long long)ncls * vol->csize * 512);
   }
-
   return res;
 }
 
@@ -521,6 +550,7 @@ FRESULT dosread(int argc, const char **argv)
   FRESULT res;
 
   if (argc < 2) {
+  usage:
     dosreadhelp();
     exit(EXIT_FAILURE);
   }
@@ -586,6 +616,8 @@ FRESULT doswrite(int argc, const char **argv)
       mode = FA_WRITE | FA_OPEN_APPEND;
     else if (! strcmp(argv[i],"-q"))
       mode = FA_WRITE | FA_CREATE_ALWAYS;
+    else if (argv[i][0] == '-')
+      goto usage;
     else if (! path)
       path = fix_path(argv[i]);
     else
@@ -669,6 +701,8 @@ FRESULT dosmkdir(int argc, const char **argv)
   for (i=1; i<argc; i++)
     if (!strcmp(argv[i], "-q"))
       qflag = 1;
+    else if (argv[i][0] == '-')
+      goto usage;
     else if (!path)
       path = fix_path(argv[i]);
     else
@@ -727,7 +761,7 @@ FRESULT rdelmany(char *path, int verbose)
     return res;
   while (res == FR_OK && info.fname[0])
     {
-      char *npath = strconcat(path,"/",info.fname);
+      char *npath = strconcat(path, "/", info.fname, 0);
       res = rdelone(npath, verbose);
       if (res != FR_OK) {
         fprintf(stderr, "dosfs: error while processing %s\n", npath);
@@ -747,7 +781,7 @@ FRESULT rdelone(char *path, int verbose)
     char *npath;
     if (verbose >= 0 && !prompt("[%s]:%s, Delete entire subtree", sfn, path))
       return FR_OK;
-    npath = strconcat(path, "/", "*");
+    npath = strconcat(path, "/", "*", 0);
     rdelmany(npath, -1);
     free(npath);
   } else if (verbose > 0 && ! prompt("[%s]:%s, Delete", sfn, path))
@@ -766,11 +800,14 @@ FRESULT dosdel(int argc, const char **argv)
       verbose = +1;
     else if (!strcmp(argv[i], "-q"))
       verbose = -1;
+    else if (argv[i][0] == '-')
+      goto usage;
     else if ((res = rdelmany(fix_path(argv[i]), verbose)) != FR_OK) {
       fprintf(stderr, "dosfs: error while processing '%s'\n", argv[i]);
       return res;
     }
   if (res != FR_OK) {
+  usage:
     dosdelhelp();
     exit(EXIT_FAILURE);
   }
@@ -812,6 +849,8 @@ FRESULT dosmove(int argc, const char **argv)
   for (i = nargc = 1; i < argc; i++)
     if (! strcmp(argv[i], "-q"))
       qflag = 1;
+    else if (argv[i][0] == '-')
+      goto usage;
     else 
       argv[nargc++] = argv[i];
   if (nargc < 3) {
@@ -838,8 +877,8 @@ FRESULT dosmove(int argc, const char **argv)
       return res;
     while (res == FR_OK && info.fname[0])
       {
-        char *from = strconcat(src, "/", info.fname);
-        char *to = (dirp) ? strconcat(dest, "/", info.fname) : strdup(dest);
+        char *from = strconcat(src, "/", info.fname, 0);
+        char *to = (dirp) ? strconcat(dest, "/", info.fname, 0) : strdup(dest);
         if (file_p(to) && qflag)
           f_unlink(to);
         res = f_rename(from, to);
@@ -907,6 +946,8 @@ FRESULT dosformat(int argc, const char **argv)
           fflag |= FM_EXFAT;
         else
           fatal("Valid arguments for option -f are: fat fat32 exfat\n");
+      } else if (argv[i][0] == '-') {
+        goto usage;
       } else if (! label) {
         label = argv[i];
       } else {
