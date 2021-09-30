@@ -538,18 +538,20 @@ FRESULT dosdir(int argc, const char **argv)
 void dosreadhelp(void)
 {
   fprintf(stderr,
-          "Usage: dosread {<path>}}\n"
+          "Usage: dosread <options> {<path>}}\n"
           "       dosfs --read {<path>}\n"
           "Read the files specified by <path> and copy them to stdout.\n"
           "Options:\n");
   common_options();
+  fprintf(stderr,
+          "\t-o <outfile>  :  copy to <outfile> instead of stdout.\n");
 }
 
 FRESULT dosread(int argc, const char **argv)
 {
   int i;
   FRESULT res;
-
+  
   if (argc < 2) {
   usage:
     dosreadhelp();
@@ -561,25 +563,33 @@ FRESULT dosread(int argc, const char **argv)
 #endif
   for (i=1; i<argc; i++)
     {
-      FIL fil;
-      char *path = fix_path(argv[i]);
-      char buffer[4096];
-      UINT nread;
-
-      res = f_open(&fil, path, FA_READ);
-      if (res != FR_OK)
-        return res;
-      do {
-        res = f_read(&fil, buffer, (UINT)sizeof(buffer), &nread);
+      if (! strcmp(argv[i], "-o")) {
+        if (++i >= argc)
+          goto usage;
+        if (! freopen(argv[i], "wb", stdout))
+          fatal("Cannot open '%s' for writing\n", argv[i]);
+      } else if (argv[i][0] == '-') {
+        goto usage;
+      } else {
+        FIL fil;
+        char *path = fix_path(argv[i]);
+        char buffer[4096];
+        UINT nread;
+        res = f_open(&fil, path, FA_READ);
         if (res != FR_OK)
-          break;
-        if (nread > 0)
-          fwrite(buffer, 1, nread, stdout);
-      } while (nread == (UINT)sizeof(buffer));
-      fflush(stdout);
-      f_close(&fil);
-      if (res != FR_OK)
-        return res;
+          return res;
+        do {
+          res = f_read(&fil, buffer, (UINT)sizeof(buffer), &nread);
+          if (res != FR_OK)
+            break;
+          if (nread > 0)
+            fwrite(buffer, 1, nread, stdout);
+        } while (nread == (UINT)sizeof(buffer));
+        fflush(stdout);
+        f_close(&fil);
+        if (res != FR_OK)
+          return res;
+      }
     }
   return FR_OK;
 }
@@ -598,6 +608,7 @@ void doswritehelp(void)
           "Options:\n");
   common_options();
   fprintf(stderr,
+          "\t-i <infile>   :  writes <infile> instead of stdin.\n"
           "\t-a            :  append to the possibly existing file <path>.\n"
           "\t-q            :  overwrite existing files\n");
 }
@@ -617,7 +628,12 @@ FRESULT doswrite(int argc, const char **argv)
       mode = FA_WRITE | FA_OPEN_APPEND;
     else if (! strcmp(argv[i],"-q"))
       mode = FA_WRITE | FA_CREATE_ALWAYS;
-    else if (argv[i][0] == '-')
+    else if (! strcmp(argv[i],"-i")) {
+      if (++i >= argc)
+        goto usage;
+      if (! freopen(argv[i], "rb", stdin))
+        fatal("Cannot open '%s' for reading.\n", argv[i]);
+    } else if (argv[i][0] == '-')
       goto usage;
     else if (! path)
       path = fix_path(argv[i]);
