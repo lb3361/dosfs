@@ -1037,7 +1037,7 @@ FRESULT dosattrib(int argc, const char **argv)
           return res;
       }
     }
-  if (na == 0) {
+  if (na == 0 && (aset | aclr) == 0) {
     res = rattrib("", "*", aset, aclr, dflag, sflag, &nf);
     if (res != FR_OK)
       return res;
