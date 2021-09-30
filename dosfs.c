@@ -319,6 +319,8 @@ char *fix_path(const char *path)
   for (s = np; *s; s++)
     if (*s == '\\')
       *s = '/';
+  while (s > np && s[-1] == '/')
+    *--s = 0;
   return np;
 }
 
@@ -449,13 +451,13 @@ FRESULT rdir(char *path, char *pattern, int sflag, int bflag, int xflag,
     }
   f_closedir(&dir);
   if (sflag) {
-    res = f_findfirst(&dir, &info, path, pattern);
+    res = f_findfirst(&dir, &info, path, "*");
     if (res != FR_OK && res != FR_NO_FILE)
       return res;
     while (res == FR_OK && info.fname[0]) {
       if (info.fattrib & AM_DIR) {
         char *npath = strconcat(path, "/", info.fname, 0);
-        rdir(npath, "*", sflag, bflag, xflag, pnfiles, psfiles, pndirs);
+        rdir(npath, pattern, sflag, bflag, xflag, pnfiles, psfiles, pndirs);
         free(npath);
       }
       res = f_findnext(&dir, &info);
@@ -871,7 +873,7 @@ FRESULT dosmove(int argc, const char **argv)
       pattern = src;
       src = "";
     }
-    res = f_findfirst(&dir, &info, src, pattern); 
+    res = f_findfirst(&dir, &info, src, pattern);
     if (res != FR_OK && res != FR_NO_FILE)
       return res;
     while (res == FR_OK && info.fname[0])
@@ -896,6 +898,155 @@ FRESULT dosmove(int argc, const char **argv)
   }
   return FR_OK;
 }
+
+/* -------------------------------------------- */
+/* DOSATTRIB                                    */
+/* -------------------------------------------- */
+
+void dosattribhelp(void)
+{
+  fprintf(stderr,
+          "Usage: dosattrib <options> [<pattern>]\n"
+          "       dosfs --attrib <options> [<pattern>]\n"
+          "Display or change file attributes.\n"
+          "When used with options [+|-][ARHS], this command changes the\n"
+          "attributes of the selected file. When used without options\n"
+          "this command prints the attributes.\n"
+          "Options:\n");
+  common_options();
+  fprintf(stderr,
+          "\t+A -A         :  set or remove the archive bit.\n"
+          "\t+R -R         :  set or remove the read-only bit.\n"
+          "\t+H -H         :  set or remove the hidden bit.\n"
+          "\t+S -S         :  set or remove the system bit.\n"
+          "\t-s            :  process directories recursively.\n"
+          "\t-d            :  change directory attributes.\n");
+}
+
+FRESULT rattrib(char *path, char *pattern, BYTE aset, BYTE aclr, int dflag, int sflag, int *pnf)
+{
+  DIR dir;
+  FILINFO info;
+  FRESULT res;
+  while (path[0] == '/')
+    path++;
+  res = f_findfirst(&dir, &info, path, pattern);
+  if (res != FR_OK && res != FR_NO_FILE)
+    return res;
+  while (res == FR_OK && info.fname[0])
+    {
+      if (dflag == 1 || !(info.fattrib & AM_DIR)) {
+        *pnf += 1;
+        if (aset == 0 && aclr == 0)
+          {
+            printf("%c%c%c%c %s%s/%s\n",
+                   (info.fattrib & AM_ARC) ? 'A' : ' ',
+                   (info.fattrib & AM_RDO) ? 'R' : ' ',
+                   (info.fattrib & AM_SYS) ? 'S' : ' ',
+                   (info.fattrib & AM_HID) ? 'H' : ' ',
+                   path[0] ? "/" : "", path, info.fname );
+          }
+        else
+          {
+            char *fn = strconcat(path, "/", info.fname, 0);
+            res = f_chmod(fn, aset, aset | aclr);
+            if (res != FR_OK)
+              fprintf(stderr, "dosfs: error while processing %s\n", fn);
+            free(fn);
+            if (res != FR_OK)
+              return res;
+          }
+      }
+      res = f_findnext(&dir, &info);
+    }
+  if (res != FR_OK)
+    return res;
+  if (sflag)
+    {
+      res = f_findfirst(&dir, &info, path, "*");
+      if (res != FR_OK && res != FR_NO_FILE)
+        return res;
+      while (res == FR_OK && info.fname[0])
+        {
+          if (info.fattrib & AM_DIR) {
+            char *fn = strconcat(path, "/", info.fname, 0);
+            res = rattrib(fn, pattern, aset, aclr, dflag, sflag, pnf);
+            free(fn);
+            if (res != FR_OK)
+              return res;
+          }
+          res = f_findnext(&dir, &info);
+        }
+      if (res != FR_OK)
+          return res;
+    }
+  return FR_OK;
+}
+
+FRESULT dosattrib(int argc, const char **argv)
+{
+  FRESULT res;
+  BYTE aset = 0;
+  BYTE aclr = 0;
+  int dflag = 0;
+  int sflag = 0;
+  int na = 0;
+  int nf = 0;
+  int i;
+
+  for (i=1; i < argc; i++)
+    {
+      BYTE *pflag = 0;
+      if (argv[i][0] == '+')
+        pflag = &aset;
+      else if (argv[i][0] == '-')
+        pflag = &aclr;
+      if (pflag) {
+        if (!strcmp(argv[i],"-d"))
+          dflag = 1;
+        else if (!strcmp(argv[i],"-s"))
+          sflag = 1;
+        else if (argv[i][2]) {
+        usage:
+          dosattribhelp();
+          exit(EXIT_FAILURE);
+        } else {
+          switch(argv[i][1]) {
+          case 'A': *pflag |= AM_ARC; break;
+          case 'R': *pflag |= AM_RDO; break;
+          case 'H': *pflag |= AM_HID; break;
+          case 'S': *pflag |= AM_SYS; break;
+          default: goto usage;
+          }
+        }
+      } else {
+        char *path = fix_path(argv[i]);
+        char *pattern = strrchr(path, '/');
+        if (dir_p(path) && dflag != 1 && (aset | aclr) == 0) {
+          pattern = "*";
+        } else if (pattern) {
+          *pattern = 0;
+          pattern += 1;
+        } else {
+          pattern = path;
+          path = "";
+        }
+        na += 1;
+        res = rattrib(path, pattern, aset, aclr, dflag, sflag, &nf);
+        if (res != FR_OK)
+          return res;
+      }
+    }
+  if (na == 0) {
+    res = rattrib("", "*", aset, aclr, dflag, sflag, &nf);
+    if (res != FR_OK)
+      return res;
+  }
+  if (nf == 0)
+    fatal("File not found\n");
+  return FR_OK;
+}
+
 
 
 /* -------------------------------------------- */
@@ -996,6 +1147,7 @@ struct {
                 { "mkdir", dosmkdir, dosmkdirhelp },
                 { "del", dosdel, dosdelhelp },
                 { "move", dosmove, dosmovehelp },
+                { "attrib", dosattrib, dosattribhelp },
                 { "format", dosformat, dosformathelp },
                 { 0, 0 } };
 

@@ -106,6 +106,25 @@ Options:
 ```
 
 ```
+Usage: dosattrib <options> [<pattern>]
+       dosfs --attrib <options> [<pattern>]
+Display or change file attributes.
+When used with options [+|-][ARHS], this command changes the
+attributes of the selected file. When used without options
+this command prints the attributes.
+Options:
+	-h            :  show more help
+	-f <filename> :  specify a device or image file (required).
+	-p <partno>   :  specify a partition number (1..4)
+	+A -A         :  set or remove the archive bit.
+	+R -R         :  set or remove the read-only bit.
+	+H -H         :  set or remove the hidden bit.
+	+S -S         :  set or remove the system bit.
+	-s            :  process directories recursively.
+	-d            :  change directory attributes.
+```
+
+```
 Usage: dosformat <options> [<label>]
        dosfs --format <options> [<label>]
 Format a filesystem.
