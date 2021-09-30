@@ -296,7 +296,7 @@ char *strconcat(const char *str1, ...)
     l += strlen(s);
   va_end(ap);
   if (! (res = malloc(l + 1)))
-    fatal("out of memory");
+    fatal("out of memory\n");
   strcpy(res, str1);
   d = res + strlen(res);
   va_start(ap, str1);
@@ -315,7 +315,7 @@ char *fix_path(const char *path)
   while (*path == '/' || *path == '\\')
     path += 1;
   if (! (np = strdup(path)))
-    fatal("out of memory");
+    fatal("out of memory\n");
   for (s = np; *s; s++)
     if (*s == '\\')
       *s = '/';
@@ -648,11 +648,11 @@ FRESULT doswrite(int argc, const char **argv)
   }
   f_close(&fil);
   if (ferror(stdin))
-    fatal("I/O error reading data from stdin");
+    fatal("I/O error reading data from stdin\n");
   if (nread && res != FR_OK)
     return res;
   if (nread && nwritten < nread)
-    fatal("Filesystem is full");
+    fatal("Filesystem is full\n");
   return FR_OK;
 }
 
