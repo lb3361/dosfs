@@ -17,7 +17,7 @@ The following lists the help associated with each subcommand:
 ```
 Usage: dosfs --<subcmd> <options> <..args..>
 Usage: dos<subcmd> <options> <..args..>
-Valid subcommands are: dir read write mkdir del move format
+Valid subcommands are: dir read write mkdir del move attrib format
 Common options:
 	-h            :  show more help
 	-f <filename> :  specify a device or image file (required).
@@ -41,13 +41,14 @@ Options:
 ```
 
 ```
-Usage: dosread {<path>}}
+Usage: dosread <options> {<path>}}
        dosfs --read {<path>}
 Read the files specified by <path> and copy them to stdout.
 Options:
 	-h            :  show more help
 	-f <filename> :  specify a device or image file (required).
 	-p <partno>   :  specify a partition number (1..4)
+	-o <outfile>  :  copy to <outfile> instead of stdout.
 ```
 
 ```
@@ -58,7 +59,9 @@ Options:
 	-h            :  show more help
 	-f <filename> :  specify a device or image file (required).
 	-p <partno>   :  specify a partition number (1..4)
+	-i <infile>   :  writes <infile> instead of stdin.
 	-a            :  append to the possibly existing file <path>.
+	-d            :  create missing directories
 	-q            :  overwrite existing files
 ```
 

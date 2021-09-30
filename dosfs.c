@@ -353,6 +353,21 @@ int dir_p(const char *path)
   return 0;
 }
 
+FRESULT rmkdir(char *path, int qflag)
+{
+  if (qflag) {
+    char *s = strrchr(path,'/');
+    if (dir_p(path))
+      return FR_OK;
+    if (s) {
+      *s = 0;
+      rmkdir(path, qflag);
+      *s = '/';
+    }
+  }
+  return f_mkdir(path);
+}
+
 const char *format_date(WORD date)
 {
   static char buffer[12];
@@ -610,18 +625,21 @@ void doswritehelp(void)
   fprintf(stderr,
           "\t-i <infile>   :  writes <infile> instead of stdin.\n"
           "\t-a            :  append to the possibly existing file <path>.\n"
+          "\t-d            :  create missing directories\n"
           "\t-q            :  overwrite existing files\n");
 }
 
 FRESULT doswrite(int argc, const char **argv)
 {
   int i;
+  char *s;
   char *path = 0;
   BYTE mode = FA_WRITE | FA_CREATE_NEW;
   FRESULT res;
   FIL fil;
   char buffer[4096];
   UINT nread, nwritten;
+  int dflag = 0;
 
   for (i=1; i<argc; i++) {
     if (! strcmp(argv[i],"-a"))
@@ -633,7 +651,9 @@ FRESULT doswrite(int argc, const char **argv)
         goto usage;
       if (! freopen(argv[i], "rb", stdin))
         fatal("Cannot open '%s' for reading.\n", argv[i]);
-    } else if (argv[i][0] == '-')
+    } else if (! strcmp(argv[i],"-d"))
+      dflag = 1;
+    else if (argv[i][0] == '-')
       goto usage;
     else if (! path)
       path = fix_path(argv[i]);
@@ -649,6 +669,12 @@ FRESULT doswrite(int argc, const char **argv)
   fflush(stdin);
   _setmode(_fileno(stdin), O_BINARY);
 #endif
+  if (dflag && (s = strrchr(path, '/'))) {
+    *s = 0;
+    if ((res = rmkdir(path, 1)) != FR_OK)
+      return res;
+    *s = '/';
+  }
   res = f_open(&fil, path, mode);
   if (res != FR_OK)
     return res;
@@ -691,21 +717,6 @@ void dosmkdirhelp(void)
   common_options();
   fprintf(stderr,
           "\t-q            :  create all necessary subdirs\n");
-}
-
-FRESULT rmkdir(char *path, int qflag)
-{
-  if (qflag) {
-    char *s = strrchr(path,'/');
-    if (dir_p(path))
-      return FR_OK;
-    if (s) {
-      *s = 0;
-      rmkdir(path, qflag);
-      *s = '/';
-    }
-  }
-  return f_mkdir(path);
 }
 
 FRESULT dosmkdir(int argc, const char **argv)
