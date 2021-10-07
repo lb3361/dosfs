@@ -454,14 +454,12 @@ FRESULT rdir(char *path, char *pattern, int sflag, int bflag, int xflag,
         *pnfiles += 1;
         *psfiles += info.fsize;
       }
-      if (bflag)
-        printf("%s%s/%s%s\n",
-               path[0] ? "/" : "",
-               path,
-               info.fname,
-               info.fattrib & AM_DIR ?  "/" : "" );
-      else
+      if (bflag) {
+        if (! (info.fattrib & AM_DIR))
+          printf("%s%s/%s\n", path[0] ? "/" : "", path, info.fname);
+      } else {
         print_filinfo(&info, xflag);
+      }
       res = f_findnext(&dir, &info);
     }
   f_closedir(&dir);
